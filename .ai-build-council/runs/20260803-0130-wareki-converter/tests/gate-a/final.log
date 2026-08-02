@@ -1,0 +1,51 @@
+=== typecheck ===
+
+> chrome-ext-wareki-converter@0.1.0 typecheck
+> tsc --noEmit
+
+=== test ===
+
+> chrome-ext-wareki-converter@0.1.0 test
+> vitest run
+
+
+ RUN  v2.1.9 /home/mokuo/projects/chrome-ext-wareki-converter
+
+ ✓ tests/unit/era.test.ts (13 tests) 7ms
+ ✓ tests/unit/parse-date.test.ts (36 tests) 23ms
+ ✓ tests/unit/convert.test.ts (10 tests) 12ms
+ ✓ tests/unit/era-transition.test.ts (13 tests) 15ms
+ ✓ tests/unit/plain-date.test.ts (7 tests) 8ms
+ ✓ tests/unit/no-clock-in-domain.test.ts (8 tests) 7ms
+stderr | tests/integration/service-worker.test.ts > リスナーの例外処理 > 未処理 rejection にならない
+handleClick failed: Error: storage down
+    at Object.get (/home/mokuo/projects/chrome-ext-wareki-converter/tests/integration/service-worker.test.ts:109:32)
+    at Module.loadSettings (/home/mokuo/projects/chrome-ext-wareki-converter/src/infrastructure/settings.ts:24:43)
+    at handleClick (/home/mokuo/projects/chrome-ext-wareki-converter/src/background/service-worker.ts:32:22)
+    at /home/mokuo/projects/chrome-ext-wareki-converter/src/background/service-worker.ts:64:3
+    at /home/mokuo/projects/chrome-ext-wareki-converter/tests/integration/service-worker.test.ts:112:7
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at file:///home/mokuo/projects/chrome-ext-wareki-converter/node_modules/@vitest/runner/dist/index.js:533:5
+    at runTest (file:///home/mokuo/projects/chrome-ext-wareki-converter/node_modules/@vitest/runner/dist/index.js:1056:11)
+    at runSuite (file:///home/mokuo/projects/chrome-ext-wareki-converter/node_modules/@vitest/runner/dist/index.js:1205:15)
+    at runSuite (file:///home/mokuo/projects/chrome-ext-wareki-converter/node_modules/@vitest/runner/dist/index.js:1205:15)
+
+ ✓ tests/integration/service-worker.test.ts (12 tests) 389ms
+
+ Test Files  7 passed (7)
+      Tests  99 passed (99)
+   Start at  02:05:53
+   Duration  849ms (transform 483ms, setup 0ms, collect 677ms, tests 463ms, environment 3ms, prepare 690ms)
+
+=== verify ===
+
+> chrome-ext-wareki-converter@0.1.0 verify
+> npm run build && node scripts/verify-dist.mjs
+
+
+> chrome-ext-wareki-converter@0.1.0 build
+> node scripts/make-icons.mjs && node build.mjs
+
+icons: done
+build: done -> dist
+verify:dist OK （検査ファイル数: 8 ）

@@ -1,0 +1,23 @@
+{
+  "name": "chrome-ext-wareki-converter",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "西暦と和暦を日付単位で相互変換するChrome拡張機能",
+  "scripts": {
+    "build": "node scripts/make-icons.mjs && node build.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "verify:dist": "node scripts/verify-dist.mjs",
+    "verify": "npm run build && node scripts/verify-dist.mjs"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "^10.4.0",
+    "@types/chrome": "^0.0.287",
+    "@types/node": "^22.20.1",
+    "esbuild": "^0.24.0",
+    "jsdom": "^25.0.1",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

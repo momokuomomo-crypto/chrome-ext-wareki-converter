@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <title>和暦変換</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main>
+      <h1>和暦変換</h1>
+
+      <div id="settings-warning" class="warning" role="alert" hidden>
+        <p id="settings-warning-text"></p>
+        <button type="button" id="reset-settings">設定を初期化</button>
+      </div>
+
+      <div id="pending" class="pending" hidden>
+        <p id="pending-text"></p>
+      </div>
+
+      <form id="form" novalidate>
+        <div class="field">
+          <label for="input">日付</label>
+          <input id="input" type="text" autocomplete="off" spellcheck="false" aria-describedby="hint" />
+          <p id="hint" class="hint">例：1989/1/8、1989年1月8日、平成元年1月8日、H1.1.8</p>
+        </div>
+
+        <fieldset class="field">
+          <legend>主に表示する形式</legend>
+          <label class="radio"><input type="radio" name="dir" value="toWareki" id="dir-wareki" checked /> 和暦</label>
+          <label class="radio"><input type="radio" name="dir" value="toGregorian" id="dir-gregorian" /> 西暦</label>
+        </fieldset>
+
+        <button type="submit" id="convert">変換</button>
+      </form>
+
+      <p id="error" class="error" role="alert" hidden></p>
+
+      <section id="result" class="result" aria-live="polite" hidden>
+        <p id="primary" class="primary"></p>
+        <p id="secondary" class="secondary"></p>
+        <ul id="notes" class="notes" hidden></ul>
+        <button type="button" id="copy">結果をコピー</button>
+        <p id="copy-status" class="hint" hidden></p>
+      </section>
+
+      <p class="hint footnote">
+        Chrome設定画面やChrome Web Storeなど、右クリックメニューを利用できないページがあります。
+        その場合は日付をコピーしてここへ入力してください。
+      </p>
+      <p class="hint footnote">
+        右クリックの結果はChromeの通知に表示されます。通知が無効な場合はこの画面に結果が残ります。
+      </p>
+      <p class="hint footnote">
+        明治5年以前は旧暦のため対応していません（1873年1月1日以降）。
+      </p>
+    </main>
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>
