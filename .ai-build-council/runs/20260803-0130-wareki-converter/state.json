@@ -1,0 +1,34 @@
+{
+  "run_id": "20260803-0130-wareki-converter",
+  "status": "TEST_A_PASSED",
+  "target_repo": "/home/mokuo/projects/chrome-ext-wareki-converter",
+  "base_commit": "d1adcb9",
+  "candidate_commit": null,
+  "design_revision": 1,
+  "design_review_rounds_used": 1,
+  "test_gate_a": {
+    "status": "PASSED",
+    "attempts": 2
+  },
+  "test_gate_b": {
+    "status": "NOT_STARTED",
+    "attempts": 0
+  },
+  "review_diff_hash": null,
+  "open_blockers": [],
+  "disputes": {},
+  "budget": {
+    "max_gate_attempts": 5,
+    "max_design_review_rounds": 2,
+    "max_dispute_rounds": 3,
+    "time_limit_hours": null,
+    "external_publish_approved": true
+  },
+  "not_done": [
+    "Stage 5: 固定diffの独立実装レビュー（2席）",
+    "Stage 6: 指摘処理・Test Gate B",
+    "実Chromeスモークテスト（実行トレース型監査による代替も未実施）",
+    "Chrome Web Store 提出"
+  ],
+  "note": "Stage 0-4 まで完了。実機で動作確認した者はまだ居ない。"
+}
