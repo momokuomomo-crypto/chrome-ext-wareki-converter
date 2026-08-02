@@ -14,6 +14,8 @@
  * 3. 元号名・略号の列挙を `ERAS` から動的生成する（改元時の更新漏れを防ぐ）
  * 4. 年のみの入力を「年の範囲」として受理する（改元年は複数の元号年を返す）
  * 5. 存在しない和暦に「もしかして」提案を付す
+ * 6. 区切りなし8桁（`19890108`）を受理する。月日の桁は形式の段階で絞る
+ * 7. 元号の書き出しは名前・略号を区別せず、漢字形式・区切り形式のどちらでも書ける
  */
 
 import { err, ok, type Result } from "./errors.js";
@@ -49,10 +51,21 @@ function codePointLength(s: string): number {
   return [...s].length;
 }
 
+/**
+ * 区切りなし8桁（`19850118`）。**月日は取りうる値に限って一致させる。**
+ *
+ * `^\d{8}$` で受けると `12345678` のような日付でない8桁も一致し、
+ * 「1234年56月78日は存在しません」という、入力を日付と決めつけた文言を返す。
+ * 形式の段階で月日の桁を絞れば、日付でない8桁は「読み取れません」に落ちる。
+ */
+const COMPACT_MD = "(0[1-9]|1[0-2])(0[1-9]|[12]\\d|3[01])";
+const GREGORIAN_COMPACT = new RegExp(`^(\\d{4})${COMPACT_MD}$`, "u");
+
 /** 日付らしき並びの粗い検出。受理の判定には使わず、複数日付の検知だけに使う。 */
 function dateLikeRegex(): RegExp {
   return new RegExp(
-    `(?:${ERA_NAMES}|[${ERA_ABBRS}])?(?:元|\\d{1,4})[年/\\-.]\\d{1,2}[月/\\-.]\\d{1,2}`,
+    `(?:${ERA_NAMES}|[${ERA_ABBRS}])?(?:元|\\d{1,4})[年/\\-.]\\d{1,2}[月/\\-.]\\d{1,2}` +
+      `|\\d{4}${COMPACT_MD}`,
     "gu",
   );
 }
@@ -81,11 +94,23 @@ const GREGORIAN_YEAR_JP = /^(\d{1,4})年$/u;
  */
 const ERA_YEAR = "(?:元|\\d{1,3})";
 
-function eraYearOnlyJpRegex(): RegExp {
-  return new RegExp(`^(${ERA_NAMES})(${ERA_YEAR})年$`, "u");
+/**
+ * 元号の書き出しは名前と略号を区別しない。
+ *
+ * 以前は名前用と略号用の正規表現を別に持ち、名前は漢字形式（`平成1年1月8日`）だけ、
+ * 略号は区切り形式（`H1.1.8`）だけを受けていた。その結果 `H1年1月8日` や `平成1`
+ * のような、書き手にとっては同じつもりの表記が形式不一致で落ちていた。
+ * 前置部分を共通化し、名前・略号のどちらでもどの形式でも書けるようにする。
+ */
+const ERA_PREFIX = `(?:${ERA_NAMES}|[${ERA_ABBRS}${ERA_ABBRS.toLowerCase()}])`;
+
+/** 名前・略号のどちらでも引ける。 */
+function findEra(token: string): EraDefinition | undefined {
+  return findEraByName(token) ?? findEraByAbbreviation(token);
 }
-function eraYearOnlyAbbrRegex(): RegExp {
-  return new RegExp(`^([${ERA_ABBRS}${ERA_ABBRS.toLowerCase()}])(${ERA_YEAR})年?$`, "u");
+
+function eraYearOnlyRegex(): RegExp {
+  return new RegExp(`^(${ERA_PREFIX})(${ERA_YEAR})年?$`, "u");
 }
 
 function containsEraName(s: string): boolean {
@@ -118,6 +143,9 @@ export function normalizeInput(raw: string): { normalized: string; afterNfkc: st
   const afterNfkc = raw.normalize("NFKC").trim();
 
   let s = stripLeadingLabel(afterNfkc);
+  // 「西暦」は元号名と対になる書き出しで、日付そのものの情報を持たない。
+  // コロンを伴わないためラベル除去では剥がれず、`西暦1989年` が落ちていた。
+  s = s.replace(/^西暦/u, "");
   s = s.replace(/[(（][日月火水木金土][)）]/g, "");
 
   // 末尾の補助語と約物は重なって現れる（「…日（木）生まれ。」）。安定するまで剥がす。
@@ -138,10 +166,10 @@ const GREGORIAN_SEPARATED = /^(\d{4})([/\-.])(\d{1,2})\2(\d{1,2})$/u;
 const GREGORIAN_JP = /^(\d{4})年(\d{1,2})月(\d{1,2})日?$/u;
 
 function eraJpRegex(): RegExp {
-  return new RegExp(`^(${ERA_NAMES})(${ERA_YEAR})年(\\d{1,2})月(\\d{1,2})日?$`, "u");
+  return new RegExp(`^(${ERA_PREFIX})(${ERA_YEAR})年(\\d{1,2})月(\\d{1,2})日?$`, "u");
 }
-function eraAbbrRegex(): RegExp {
-  return new RegExp(`^([${ERA_ABBRS}${ERA_ABBRS.toLowerCase()}])(${ERA_YEAR})([/\\-.])(\\d{1,2})\\3(\\d{1,2})$`, "u");
+function eraSeparatedRegex(): RegExp {
+  return new RegExp(`^(${ERA_PREFIX})(${ERA_YEAR})([/\\-.])(\\d{1,2})\\3(\\d{1,2})$`, "u");
 }
 
 function eraYearToNumber(token: string): number {
@@ -264,16 +292,9 @@ export function parseDateInput(raw: string): Result<ParsedInput> {
   let m = GREGORIAN_YEAR_BARE.exec(normalized) ?? GREGORIAN_YEAR_JP.exec(normalized);
   if (m) return buildFromGregorianYear(Number(m[1]));
 
-  m = eraYearOnlyJpRegex().exec(normalized);
+  m = eraYearOnlyRegex().exec(normalized);
   if (m) {
-    const era = findEraByName(m[1] as string);
-    if (!era) return err("UNPARSABLE");
-    return buildFromEraYear(era, eraYearToNumber(m[2] as string));
-  }
-
-  m = eraYearOnlyAbbrRegex().exec(normalized);
-  if (m) {
-    const era = findEraByAbbreviation(m[1] as string);
+    const era = findEra(m[1] as string);
     if (!era) return err("UNPARSABLE");
     return buildFromEraYear(era, eraYearToNumber(m[2] as string));
   }
@@ -284,16 +305,19 @@ export function parseDateInput(raw: string): Result<ParsedInput> {
   m = GREGORIAN_JP.exec(normalized);
   if (m) return buildFromGregorian(Number(m[1]), Number(m[2]), Number(m[3]));
 
+  m = GREGORIAN_COMPACT.exec(normalized);
+  if (m) return buildFromGregorian(Number(m[1]), Number(m[2]), Number(m[3]));
+
   m = eraJpRegex().exec(normalized);
   if (m) {
-    const era = findEraByName(m[1] as string);
+    const era = findEra(m[1] as string);
     if (!era) return err("UNPARSABLE");
     return buildFromEra(era, eraYearToNumber(m[2] as string), Number(m[3]), Number(m[4]));
   }
 
-  m = eraAbbrRegex().exec(normalized);
+  m = eraSeparatedRegex().exec(normalized);
   if (m) {
-    const era = findEraByAbbreviation(m[1] as string);
+    const era = findEra(m[1] as string);
     if (!era) return err("UNPARSABLE");
     return buildFromEra(era, eraYearToNumber(m[2] as string), Number(m[4]), Number(m[5]));
   }

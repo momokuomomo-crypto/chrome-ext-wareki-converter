@@ -25,8 +25,29 @@ const errOf = (s: string) => {
 };
 
 describe("受理する形式", () => {
-  it.each(["1989/1/8", "1989-1-8", "1989.1.8", "1989年1月8日", "1989/01/08"])(
+  it.each(["1989/1/8", "1989-1-8", "1989.1.8", "1989年1月8日", "1989/01/08", "19890108"])(
     "西暦 %s", (s) => expect(dateOf(s)).toEqual(d(1989, 1, 8)));
+
+  it("区切りなし8桁を受理する", () => {
+    expect(dateOf("19850118")).toEqual(d(1985, 1, 18));
+    expect(dateOf("１９８５０１１８")).toEqual(d(1985, 1, 18)); // 全角
+    expect(dateOf("生年月日：19850118")).toEqual(d(1985, 1, 18));
+    expect(code("19850118 20200101")).toBe("MULTIPLE_DATES"); // 連続でも複数として検知する
+  });
+
+  it("元号は名前と略号のどちらでも、漢字形式・区切り形式のどちらでも書ける", () => {
+    expect(dateOf("H1年1月8日")).toEqual(d(1989, 1, 8));
+    expect(dateOf("h1年1月8日")).toEqual(d(1989, 1, 8));
+    expect(dateOf("平成1.1.8")).toEqual(d(1989, 1, 8));
+    expect(dateOf("S60年1月18日")).toEqual(d(1985, 1, 18));
+    expect(okv("平成1")).toEqual(okv("平成元年")); // 「年」なしも名前側で受ける
+    expect(okv("平成元")).toEqual(okv("平成元年"));
+  });
+
+  it("「西暦」の書き出しを剥がす（元号名と対になる、日付情報を持たない前置）", () => {
+    expect(dateOf("西暦1989年1月8日")).toEqual(d(1989, 1, 8));
+    expect(okv("西暦1989年")).toEqual(okv("1989"));
+  });
 
   it.each(["平成元年1月8日", "平成1年1月8日", "H1.1.8", "H元.1.8", "h1-1-8", "H元/1/8"])(
     "和暦 %s", (s) => expect(dateOf(s)).toEqual(d(1989, 1, 8)));
@@ -148,8 +169,19 @@ describe("先頭ラベル除去の条件", () => {
 });
 
 describe("受理しない形式", () => {
-  it.each(["87/1/8", "1/8/1989", "19890108", "千九百八十九年", "1989/1-8", "1989-1.8"])(
+  it.each(["87/1/8", "1/8/1989", "千九百八十九年", "1989/1-8", "1989-1.8"])(
     "%s", (s) => expect(code(s)).toBe("UNPARSABLE"));
+
+  it("8桁でも日付として成立しない並びは受理しない", () => {
+    // 月日の桁を形式の段階で絞る。`^\d{8}$` で受けると 12345678 を
+    // 「1234年56月78日は存在しません」と、日付と決めつけた文言で返すことになる。
+    expect(code("12345678")).toBe("UNPARSABLE");
+    expect(code("19851318")).toBe("UNPARSABLE"); // 13月
+    expect(code("19850132")).toBe("UNPARSABLE"); // 32日
+    expect(code("198501189")).toBe("UNPARSABLE"); // 9桁
+    expect(code("1985011")).toBe("UNPARSABLE"); // 7桁
+    expect(code("19850229")).toBe("NONEXISTENT_DATE"); // 桁は妥当だが実在しない日
+  });
 
   it("存在しない日付", () => {
     expect(code("1989年2月30日")).toBe("NONEXISTENT_DATE");

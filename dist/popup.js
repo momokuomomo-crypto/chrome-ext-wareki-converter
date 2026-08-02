@@ -205,9 +205,11 @@ var ERA_ABBRS = ERAS.map((e) => e.abbreviation).join("");
 function codePointLength(s) {
   return [...s].length;
 }
+var COMPACT_MD = "(0[1-9]|1[0-2])(0[1-9]|[12]\\d|3[01])";
+var GREGORIAN_COMPACT = new RegExp(`^(\\d{4})${COMPACT_MD}$`, "u");
 function dateLikeRegex() {
   return new RegExp(
-    `(?:${ERA_NAMES}|[${ERA_ABBRS}])?(?:\u5143|\\d{1,4})[\u5E74/\\-.]\\d{1,2}[\u6708/\\-.]\\d{1,2}`,
+    `(?:${ERA_NAMES}|[${ERA_ABBRS}])?(?:\u5143|\\d{1,4})[\u5E74/\\-.]\\d{1,2}[\u6708/\\-.]\\d{1,2}|\\d{4}${COMPACT_MD}`,
     "gu"
   );
 }
@@ -217,11 +219,12 @@ function countDateLike(s) {
 var GREGORIAN_YEAR_BARE = /^(\d{4})$/u;
 var GREGORIAN_YEAR_JP = /^(\d{1,4})年$/u;
 var ERA_YEAR = "(?:\u5143|\\d{1,3})";
-function eraYearOnlyJpRegex() {
-  return new RegExp(`^(${ERA_NAMES})(${ERA_YEAR})\u5E74$`, "u");
+var ERA_PREFIX = `(?:${ERA_NAMES}|[${ERA_ABBRS}${ERA_ABBRS.toLowerCase()}])`;
+function findEra(token) {
+  return findEraByName(token) ?? findEraByAbbreviation(token);
 }
-function eraYearOnlyAbbrRegex() {
-  return new RegExp(`^([${ERA_ABBRS}${ERA_ABBRS.toLowerCase()}])(${ERA_YEAR})\u5E74?$`, "u");
+function eraYearOnlyRegex() {
+  return new RegExp(`^(${ERA_PREFIX})(${ERA_YEAR})\u5E74?$`, "u");
 }
 function containsEraName(s) {
   return ERAS.some((e) => s.includes(e.name));
@@ -240,6 +243,7 @@ function stripLeadingLabel(s) {
 function normalizeInput(raw) {
   const afterNfkc = raw.normalize("NFKC").trim();
   let s = stripLeadingLabel(afterNfkc);
+  s = s.replace(/^西暦/u, "");
   s = s.replace(/[(（][日月火水木金土][)）]/g, "");
   for (; ; ) {
     const before = s;
@@ -254,10 +258,10 @@ function normalizeInput(raw) {
 var GREGORIAN_SEPARATED = /^(\d{4})([/\-.])(\d{1,2})\2(\d{1,2})$/u;
 var GREGORIAN_JP = /^(\d{4})年(\d{1,2})月(\d{1,2})日?$/u;
 function eraJpRegex() {
-  return new RegExp(`^(${ERA_NAMES})(${ERA_YEAR})\u5E74(\\d{1,2})\u6708(\\d{1,2})\u65E5?$`, "u");
+  return new RegExp(`^(${ERA_PREFIX})(${ERA_YEAR})\u5E74(\\d{1,2})\u6708(\\d{1,2})\u65E5?$`, "u");
 }
-function eraAbbrRegex() {
-  return new RegExp(`^([${ERA_ABBRS}${ERA_ABBRS.toLowerCase()}])(${ERA_YEAR})([/\\-.])(\\d{1,2})\\3(\\d{1,2})$`, "u");
+function eraSeparatedRegex() {
+  return new RegExp(`^(${ERA_PREFIX})(${ERA_YEAR})([/\\-.])(\\d{1,2})\\3(\\d{1,2})$`, "u");
 }
 function eraYearToNumber(token) {
   return token === "\u5143" ? 1 : Number(token);
@@ -321,15 +325,9 @@ function parseDateInput(raw) {
   if ((afterNfkc.match(/:/gu) ?? []).length > MAX_COLONS) return err("TOO_MANY_SEPARATORS");
   let m = GREGORIAN_YEAR_BARE.exec(normalized) ?? GREGORIAN_YEAR_JP.exec(normalized);
   if (m) return buildFromGregorianYear(Number(m[1]));
-  m = eraYearOnlyJpRegex().exec(normalized);
+  m = eraYearOnlyRegex().exec(normalized);
   if (m) {
-    const era = findEraByName(m[1]);
-    if (!era) return err("UNPARSABLE");
-    return buildFromEraYear(era, eraYearToNumber(m[2]));
-  }
-  m = eraYearOnlyAbbrRegex().exec(normalized);
-  if (m) {
-    const era = findEraByAbbreviation(m[1]);
+    const era = findEra(m[1]);
     if (!era) return err("UNPARSABLE");
     return buildFromEraYear(era, eraYearToNumber(m[2]));
   }
@@ -337,15 +335,17 @@ function parseDateInput(raw) {
   if (m) return buildFromGregorian(Number(m[1]), Number(m[3]), Number(m[4]));
   m = GREGORIAN_JP.exec(normalized);
   if (m) return buildFromGregorian(Number(m[1]), Number(m[2]), Number(m[3]));
+  m = GREGORIAN_COMPACT.exec(normalized);
+  if (m) return buildFromGregorian(Number(m[1]), Number(m[2]), Number(m[3]));
   m = eraJpRegex().exec(normalized);
   if (m) {
-    const era = findEraByName(m[1]);
+    const era = findEra(m[1]);
     if (!era) return err("UNPARSABLE");
     return buildFromEra(era, eraYearToNumber(m[2]), Number(m[3]), Number(m[4]));
   }
-  m = eraAbbrRegex().exec(normalized);
+  m = eraSeparatedRegex().exec(normalized);
   if (m) {
-    const era = findEraByAbbreviation(m[1]);
+    const era = findEra(m[1]);
     if (!era) return err("UNPARSABLE");
     return buildFromEra(era, eraYearToNumber(m[2]), Number(m[4]), Number(m[5]));
   }
