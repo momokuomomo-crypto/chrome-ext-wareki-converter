@@ -76,6 +76,9 @@ button:disabled { opacity: 0.6; cursor: default; }
   color: var(--error);
   border: 1px solid var(--error);
   border-radius: 4px;
+  /* 「もしかして」提案は改行で区切って渡される（errors.ts の messageFor）。
+     textContent では改行が空白へ潰れるため、ここで保持する。 */
+  white-space: pre-line;
 }
 .error::before { content: "⚠ "; }
 
