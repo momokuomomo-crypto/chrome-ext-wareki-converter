@@ -3,14 +3,17 @@
  *
  * 姉妹拡張（年齢計算）からの**意図した差分**：
  * - 落とした：REFERENCE_BEFORE_BIRTH / ABOVE_MAX_REFERENCE / SETTINGS_UNREADABLE 以外の年齢固有語
- * - 追加した：YEAR_ONLY（年のみ入力）、TOO_MANY_SEPARATORS（区切り過多）
+ * - 追加した：TOO_MANY_SEPARATORS（区切り過多）
+ *
+ * YEAR_ONLY は廃止した。年のみの入力を一律で拒否していた頃のコードで、
+ * 改元の無い年（1901 など）にまで「改元年は元号を一意に決められないため」という
+ * その入力については誤った文言を返していた。年のみは変換対象になった。
  */
 
 export type ErrorCode =
   | "EMPTY_INPUT"
   | "TOO_LONG"
   | "UNPARSABLE"
-  | "YEAR_ONLY"
   | "NONEXISTENT_DATE"
   | "MULTIPLE_DATES"
   | "TOO_MANY_SEPARATORS"
@@ -34,8 +37,6 @@ export function messageFor(error: AppError): string {
         return "日付部分だけを入力または選択してください。";
       case "UNPARSABLE":
         return "日付を読み取れません。例：1989/1/8、平成元年1月8日、H1.1.8";
-      case "YEAR_ONLY":
-        return "改元年は元号を一意に決められないため、月日まで入力してください。";
       case "NONEXISTENT_DATE":
         return error.detail ? `${error.detail}は存在しません。` : "存在しない日付です。";
       case "MULTIPLE_DATES":

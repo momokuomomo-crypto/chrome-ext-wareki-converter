@@ -61,11 +61,21 @@ export function initPopup(): void {
     return el.dirGregorian.checked ? "toGregorian" : "toWareki";
   }
 
+  /** 1 行ごとに要素を作る。改行文字は textContent では折り返されないため。 */
+  function setLines(target: HTMLElement, lines: string[]): void {
+    target.replaceChildren();
+    for (const line of lines) {
+      const div = document.createElement("div");
+      div.textContent = line;
+      target.append(div);
+    }
+  }
+
   function clearResult(): void {
     lastResult = null;
     el.result.hidden = true;
-    el.primary.textContent = "";
-    el.secondary.textContent = "";
+    el.primary.replaceChildren();
+    el.secondary.replaceChildren();
     el.notes.replaceChildren();
     el.notes.hidden = true;
     el.copyStatus.hidden = true;
@@ -78,9 +88,9 @@ export function initPopup(): void {
   }
 
   function render(result: ConversionResult): void {
-    const { primary, secondary, notes } = formatForPopup(result, currentDirection());
-    el.primary.textContent = primary;
-    el.secondary.textContent = secondary;
+    const { primaryLines, secondaryLines, notes } = formatForPopup(result, currentDirection());
+    setLines(el.primary, primaryLines);
+    setLines(el.secondary, secondaryLines);
     el.notes.replaceChildren();
     for (const note of notes) {
       const li = document.createElement("li");

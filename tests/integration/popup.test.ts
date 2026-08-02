@@ -73,6 +73,77 @@ describe("ポップアップ", () => {
     expect($("primary").textContent).toBe("令和2年1月1日");
   });
 
+  it("年だけの入力を変換して表示する（1901 は明治34年）", async () => {
+    await openPopup();
+
+    await submitWith("1901");
+    expect($("error").hidden).toBe(true);
+    expect($("result").hidden).toBe(false);
+    expect($("primary").textContent).toBe("明治34年");
+    expect($("secondary").textContent).toBe("1901年");
+    expect($("notes").hidden).toBe(true);
+  });
+
+  it("改元年は両方の元号年を別々の行に出し、境界を注記する", async () => {
+    await openPopup();
+
+    await submitWith("1989");
+    const lines = Array.from($("primary").children, (c) => c.textContent);
+    expect(lines).toEqual(["昭和64年（1月1日〜1月7日）", "平成元年（1月8日〜12月31日）"]);
+    expect($("secondary").textContent).toBe("1989年");
+    expect($("notes").hidden).toBe(false);
+    expect($("notes").textContent).toContain("1月8日からが平成元年");
+  });
+
+  it("年のみの結果でも方向切替が効く", async () => {
+    await openPopup();
+    await submitWith("1989");
+
+    $<HTMLInputElement>("dir-gregorian").checked = true;
+    $<HTMLInputElement>("dir-gregorian").dispatchEvent(new Event("change", { bubbles: true }));
+    await flush();
+
+    expect($("primary").textContent).toBe("1989年");
+    expect(Array.from($("secondary").children)).toHaveLength(2);
+  });
+
+  it("エラーのあと、正しい入力に直せば結果が表示される", async () => {
+    await openPopup();
+
+    await submitWith("ほげ");
+    expect($("error").hidden).toBe(false);
+    expect($("result").hidden).toBe(true);
+
+    await submitWith("1989/1/8");
+    expect($("error").hidden).toBe(true);
+    expect($("result").hidden).toBe(false);
+    expect($("primary").textContent).toBe("平成元年1月8日");
+  });
+
+  it("結果を出したあとエラーにすると、結果が消えてエラーが出る", async () => {
+    await openPopup();
+
+    await submitWith("1989/1/8");
+    expect($("result").hidden).toBe(false);
+
+    await submitWith("ほげ");
+    expect($("result").hidden).toBe(true);
+    expect($("error").hidden).toBe(false);
+    expect($("error").textContent).not.toBe("");
+  });
+
+  it("エラーが連続しても毎回表示される", async () => {
+    await openPopup();
+
+    await submitWith("ほげ");
+    const first = $("error").textContent;
+    expect($("error").hidden).toBe(false);
+
+    await submitWith("1872/1/1");
+    expect($("error").hidden).toBe(false);
+    expect($("error").textContent).not.toBe(first);
+  });
+
   it("クリップボードが同期例外を投げてもコピーボタンが再度押せる", async () => {
     (globalThis.navigator as unknown as { clipboard: unknown }).clipboard = {
       writeText: () => {

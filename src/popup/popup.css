@@ -97,6 +97,9 @@ dt, dd { margin: 0; }
 
 .primary { margin: 0 0 2px; font-size: 20px; font-weight: 600; }
 .secondary { margin: 0 0 8px; font-size: 14px; color: var(--muted); }
+/* 年のみの結果は改元年で複数行になる（昭和64年／平成元年） */
+.primary div + div { margin-top: 2px; }
+.secondary div + div { margin-top: 1px; }
 .notes { margin: 0 0 10px; padding-left: 1.1em; }
 .notes li { font-size: 11px; color: var(--muted); line-height: 1.6; }
 .notes li::marker { content: "※ "; }

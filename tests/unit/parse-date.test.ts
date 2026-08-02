@@ -7,6 +7,12 @@ const okv = (s: string) => {
   if (!r.ok) throw new Error(`expected ok but got ${r.error.code} for ${JSON.stringify(s)}`);
   return r.value;
 };
+/** 年月日そろった結果であることを確かめたうえで日付を取り出す */
+const dateOf = (s: string) => {
+  const v = okv(s);
+  if (v.kind !== "date") throw new Error(`expected a date but got ${v.kind} for ${JSON.stringify(s)}`);
+  return v.date;
+};
 const code = (s: string) => {
   const r = parseDateInput(s);
   if (r.ok) throw new Error(`expected error but parsed ${JSON.stringify(r.value)} for ${s}`);
@@ -20,10 +26,10 @@ const errOf = (s: string) => {
 
 describe("受理する形式", () => {
   it.each(["1989/1/8", "1989-1-8", "1989.1.8", "1989年1月8日", "1989/01/08"])(
-    "西暦 %s", (s) => expect(okv(s).date).toEqual(d(1989, 1, 8)));
+    "西暦 %s", (s) => expect(dateOf(s)).toEqual(d(1989, 1, 8)));
 
   it.each(["平成元年1月8日", "平成1年1月8日", "H1.1.8", "H元.1.8", "h1-1-8", "H元/1/8"])(
-    "和暦 %s", (s) => expect(okv(s).date).toEqual(d(1989, 1, 8)));
+    "和暦 %s", (s) => expect(dateOf(s)).toEqual(d(1989, 1, 8)));
 
   it("入力の体系を判別する", () => {
     expect(okv("1989/1/8").inputKind).toBe("gregorian");
@@ -32,21 +38,70 @@ describe("受理する形式", () => {
   });
 
   it("全角", () => {
-    expect(okv("１９８９年１月８日").date).toEqual(d(1989, 1, 8));
-    expect(okv("平成元年１月８日").date).toEqual(d(1989, 1, 8));
+    expect(dateOf("１９８９年１月８日")).toEqual(d(1989, 1, 8));
+    expect(dateOf("平成元年１月８日")).toEqual(d(1989, 1, 8));
   });
 
   it("先頭ラベル・曜日括弧・末尾語", () => {
-    expect(okv("生年月日：1989年1月8日").date).toEqual(d(1989, 1, 8));
-    expect(okv("日付: 1989/1/8").date).toEqual(d(1989, 1, 8));
-    expect(okv("1989年1月8日（日）").date).toEqual(d(1989, 1, 8));
-    expect(okv("1989年1月8日生まれ。").date).toEqual(d(1989, 1, 8));
+    expect(dateOf("生年月日：1989年1月8日")).toEqual(d(1989, 1, 8));
+    expect(dateOf("日付: 1989/1/8")).toEqual(d(1989, 1, 8));
+    expect(dateOf("1989年1月8日（日）")).toEqual(d(1989, 1, 8));
+    expect(dateOf("1989年1月8日生まれ。")).toEqual(d(1989, 1, 8));
   });
 
   it("空白を含む単一日付を誤って拒否しない（候補数検査の過剰拒否の回帰）", () => {
-    expect(okv("1989年 1月 8日").date).toEqual(d(1989, 1, 8));
-    expect(okv("1989 / 1 / 8").date).toEqual(d(1989, 1, 8));
-    expect(okv("   1989/1/8   ").date).toEqual(d(1989, 1, 8));
+    expect(dateOf("1989年 1月 8日")).toEqual(d(1989, 1, 8));
+    expect(dateOf("1989 / 1 / 8")).toEqual(d(1989, 1, 8));
+    expect(dateOf("   1989/1/8   ")).toEqual(d(1989, 1, 8));
+  });
+});
+
+describe("年のみの入力", () => {
+  it("西暦の年は年として受理する（日付へ丸めない）", () => {
+    expect(okv("1901")).toEqual({ kind: "gregorianYear", year: 1901, inputKind: "gregorian" });
+    expect(okv("1989年")).toEqual({ kind: "gregorianYear", year: 1989, inputKind: "gregorian" });
+    expect(okv("１９０１")).toEqual({ kind: "gregorianYear", year: 1901, inputKind: "gregorian" });
+  });
+
+  it("和暦の年は元号と元号年として受理する", () => {
+    const heisei = okv("平成元年");
+    expect(heisei.kind).toBe("eraYear");
+    expect(heisei.inputKind).toBe("wareki");
+    expect(okv("H1")).toEqual(okv("平成元年"));
+    expect(okv("平成1年")).toEqual(okv("平成元年"));
+  });
+
+  it("改元年の両側の元号年をどちらも受理する", () => {
+    expect(okv("昭和64年").kind).toBe("eraYear"); // 1989/1/1〜1/7
+    expect(okv("平成元年").kind).toBe("eraYear"); // 1989/1/8〜12/31
+  });
+
+  it("存在しない元号年は期間外として拒否し、正解の年を示す", () => {
+    expect(code("昭和65年")).toBe("ERA_OUT_OF_RANGE");
+    expect(errOf("昭和65年").suggestion).toBe("この年は 平成2年 です。");
+    expect(code("大正16年")).toBe("ERA_OUT_OF_RANGE");
+  });
+
+  it("改元年をまたぐ元号年の提案は両方を並べる", () => {
+    // 明治46年 = 1913年ではなく、機械換算先の 1913 年は大正2年のみ
+    expect(errOf("明治46年").suggestion).toBe("この年は 大正2年 です。");
+    // 明治45年（1912年）は大正へ改元した年なので実在する
+    expect(okv("明治45年").kind).toBe("eraYear");
+  });
+
+  it("旧暦期間にかかる年は拒否する", () => {
+    expect(code("明治5年")).toBe("BELOW_MIN_DATE");
+    expect(code("1872")).toBe("BELOW_MIN_DATE");
+    expect(code("1872年")).toBe("BELOW_MIN_DATE");
+    expect(okv("明治6年").kind).toBe("eraYear");
+    expect(okv("1873").kind).toBe("gregorianYear");
+  });
+
+  it("裸の1〜3桁は年とみなさない（打ち間違いを旧暦の文言で返さない）", () => {
+    expect(code("5")).toBe("UNPARSABLE");
+    expect(code("199")).toBe("UNPARSABLE");
+    // 「年」を伴えば年として扱い、範囲外として断る
+    expect(code("199年")).toBe("BELOW_MIN_DATE");
   });
 });
 
@@ -84,19 +139,13 @@ describe("先頭ラベル除去の条件", () => {
 });
 
 describe("受理しない形式", () => {
-  it("年のみは専用コードで拒否する", () => {
-    for (const s of ["1989年", "1989", "平成元年", "令和8年", "H1"]) {
-      expect(code(s), s).toBe("YEAR_ONLY");
-    }
-  });
-
   it.each(["87/1/8", "1/8/1989", "19890108", "千九百八十九年", "1989/1-8", "1989-1.8"])(
     "%s", (s) => expect(code(s)).toBe("UNPARSABLE"));
 
   it("存在しない日付", () => {
     expect(code("1989年2月30日")).toBe("NONEXISTENT_DATE");
     expect(code("2001/2/29")).toBe("NONEXISTENT_DATE");
-    expect(okv("2000/2/29").date).toEqual(d(2000, 2, 29));
+    expect(dateOf("2000/2/29")).toEqual(d(2000, 2, 29));
   });
 
   it("元号期間外", () => {
@@ -113,7 +162,7 @@ describe("受理しない形式", () => {
   it("明治5年以前", () => {
     expect(code("明治元年2月1日")).toBe("BELOW_MIN_DATE");
     expect(code("1872/12/31")).toBe("BELOW_MIN_DATE");
-    expect(okv("明治6年1月1日").date).toEqual(d(1873, 1, 1));
+    expect(dateOf("明治6年1月1日")).toEqual(d(1873, 1, 1));
   });
 
   it("空・長すぎる", () => {

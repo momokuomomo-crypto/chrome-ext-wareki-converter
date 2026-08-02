@@ -3,9 +3,14 @@
 import type { ConversionResult, Direction } from "../domain/convert.js";
 import { verifiedThrough } from "../domain/eras.js";
 import type { PlainDate } from "../domain/plain-date.js";
+import { coversFullYear } from "../domain/year-span.js";
 
 export function formatDateJp(d: PlainDate): string {
   return `${d.year}年${d.month}月${d.day}日`;
+}
+
+function monthDayJp(d: PlainDate): string {
+  return `${d.month}月${d.day}日`;
 }
 
 /** 改元年の注記（要件 6-4）。同一年内の複数改元にも対応する。 */
@@ -28,37 +33,63 @@ export function verificationNote(r: ConversionResult): string | null {
   );
 }
 
+/**
+ * 和暦側の表示行。年だけの結果は元号年ごとに 1 行になる。
+ *
+ * 期間を併記するのは元号年が 2 つ以上あるときだけにする。1 つしかなければ
+ * どの期間かを問う余地が無く、併記は情報を増やさずに行を長くするだけになる。
+ */
+function warekiLines(r: ConversionResult): string[] {
+  if (r.kind === "date") return [r.wareki];
+
+  const showSpan = r.segments.length > 1;
+  return r.segments.map((s) => {
+    const base = `${s.era.name}${s.eraYearLabel}年`;
+    return showSpan ? `${base}（${monthDayJp(s.from)}〜${monthDayJp(s.to)}）` : base;
+  });
+}
+
+/** 西暦側の表示行。年の一部しか覆わない場合だけ期間を書く。 */
+function gregorianLines(r: ConversionResult): string[] {
+  if (r.kind === "date") return [formatDateJp(r.gregorian)];
+  if (coversFullYear(r.from, r.to)) return [`${r.gregorianYear}年`];
+  return [`${r.gregorianYear}年${monthDayJp(r.from)}〜${monthDayJp(r.to)}`];
+}
+
 /** 主表示・副表示・注記。注記はコピー対象に含めない。 */
 export function formatForPopup(
   r: ConversionResult,
   direction: Direction,
-): { primary: string; secondary: string; notes: string[] } {
-  const wareki = r.wareki;
-  const gregorian = formatDateJp(r.gregorian);
-  const primary = direction === "toWareki" ? wareki : gregorian;
-  const secondary = direction === "toWareki" ? gregorian : wareki;
+): { primaryLines: string[]; secondaryLines: string[]; notes: string[] } {
+  const wareki = warekiLines(r);
+  const gregorian = gregorianLines(r);
 
   const notes = [...transitionNotes(r)];
   const v = verificationNote(r);
   if (v) notes.push(v);
 
-  return { primary, secondary, notes };
+  return {
+    primaryLines: direction === "toWareki" ? wareki : gregorian,
+    secondaryLines: direction === "toWareki" ? gregorian : wareki,
+    notes,
+  };
 }
 
-/** コピー対象は主表示＋副表示の2行のみ。注記を含めない（要件 7-1）。 */
+/** コピー対象は主表示＋副表示のみ。注記を含めない（要件 7-1）。 */
 export function formatForClipboard(r: ConversionResult, direction: Direction): string {
-  const { primary, secondary } = formatForPopup(r, direction);
-  return `${primary}\n${secondary}`;
+  const { primaryLines, secondaryLines } = formatForPopup(r, direction);
+  return [...primaryLines, ...secondaryLines].join("\n");
 }
 
 /**
  * 通知は主表示のみ。注記は載せない（要件 7-2）。
  * 通知本文は OS により2行程度で切られるため、注記を入れると主表示が埋もれる。
+ * 年だけの結果で複数行になる場合は 1 行へ畳む（通知は改行を保持しない）。
  */
 export function formatForNotification(
   r: ConversionResult,
   direction: Direction,
 ): { title: string; message: string } {
-  const { primary, secondary } = formatForPopup(r, direction);
-  return { title: primary, message: secondary };
+  const { primaryLines, secondaryLines } = formatForPopup(r, direction);
+  return { title: primaryLines.join("／"), message: secondaryLines.join("／") };
 }

@@ -12,7 +12,7 @@
  *    候補数が 0 件になる）
  * 2. 先頭ラベル除去の条件を強化（元号名を含むラベルを拒否、除去後の候補数を確認）
  * 3. 元号名・略号の列挙を `ERAS` から動的生成する（改元時の更新漏れを防ぐ）
- * 4. 年のみの入力を専用コードで拒否する
+ * 4. 年のみの入力を「年の範囲」として受理する（改元年は複数の元号年を返す）
  * 5. 存在しない和暦に「もしかして」提案を付す
  */
 
@@ -33,6 +33,7 @@ import {
   MIN_SUPPORTED_DATE,
   type PlainDate,
 } from "./plain-date.js";
+import { segmentOfEraYear, segmentsOfGregorianYear } from "./year-span.js";
 
 export const MAX_INPUT_CODE_POINTS = 64;
 /** ラベルとみなす接頭部の最大長 */
@@ -60,8 +61,22 @@ export function countDateLike(s: string): number {
   return (s.match(dateLikeRegex()) ?? []).length;
 }
 
-/** 年だけを表す並び（`1989年` `平成元年`）。 */
-const YEAR_ONLY = new RegExp(`^(?:(?:${ERA_NAMES}|[${ERA_ABBRS}])?(?:元|\\d{1,4}))年?$`, "u");
+/**
+ * 年だけを表す並び（`1901` `1989年` `平成元年` `H1`）。
+ *
+ * 西暦の裸の数字は 4 桁のみ受理する。`5` のような 1〜3 桁を年とみなすと、
+ * 打ち間違いを「明治5年以前は旧暦」という無関係な文言で返すことになる。
+ * 3 桁以下は `年` を伴う場合だけ年として扱う。
+ */
+const GREGORIAN_YEAR_BARE = /^(\d{4})$/u;
+const GREGORIAN_YEAR_JP = /^(\d{1,4})年$/u;
+
+function eraYearOnlyJpRegex(): RegExp {
+  return new RegExp(`^(${ERA_NAMES})(元|\\d{1,2})年$`, "u");
+}
+function eraYearOnlyAbbrRegex(): RegExp {
+  return new RegExp(`^([${ERA_ABBRS}${ERA_ABBRS.toLowerCase()}])(元|\\d{1,2})年?$`, "u");
+}
 
 function containsEraName(s: string): boolean {
   return ERAS.some((e) => s.includes(e.name));
@@ -130,14 +145,23 @@ function jp(year: number, month: number, day: number): string {
 /** 入力がどちらの体系で書かれていたか。表示の主従を決めるために使う。 */
 export type InputKind = "gregorian" | "wareki";
 
-export type ParsedDate = Readonly<{ date: PlainDate; inputKind: InputKind }>;
+/**
+ * 解析結果。年月日そろった入力と、年だけの入力を区別する。
+ *
+ * 年だけの入力をここで日付へ丸めない。`1989` を 1 月 1 日とみなすような
+ * 補完は、改元年でどちらの元号を選ぶかという判断を暗黙に行うことになる。
+ */
+export type ParsedInput =
+  | Readonly<{ kind: "date"; date: PlainDate; inputKind: InputKind }>
+  | Readonly<{ kind: "gregorianYear"; year: number; inputKind: "gregorian" }>
+  | Readonly<{ kind: "eraYear"; era: EraDefinition; eraYear: number; inputKind: "wareki" }>;
 
-function buildFromGregorian(year: number, month: number, day: number): Result<ParsedDate> {
+function buildFromGregorian(year: number, month: number, day: number): Result<ParsedInput> {
   if (!isValidDate(year, month, day)) return err("NONEXISTENT_DATE", jp(year, month, day));
   const date = makePlainDate(year, month, day);
   if (!date) return err("NONEXISTENT_DATE", jp(year, month, day));
   if (compare(date, MIN_SUPPORTED_DATE) < 0) return err("BELOW_MIN_DATE");
-  return ok({ date, inputKind: "gregorian" });
+  return ok({ kind: "date", date, inputKind: "gregorian" });
 }
 
 function buildFromEra(
@@ -145,7 +169,7 @@ function buildFromEra(
   eraYear: number,
   month: number,
   day: number,
-): Result<ParsedDate> {
+): Result<ParsedInput> {
   if (eraYear < 1) return err("UNPARSABLE");
   const year = gregorianYearOf(era, eraYear);
   const label = `${era.name}${eraYearLabel(eraYear)}年${month}月${day}日`;
@@ -172,10 +196,43 @@ function buildFromEra(
     return err("ERA_OUT_OF_RANGE", `${label}は${era.name}の期間外です。${startText}${endText}です。`, suggestion);
   }
 
-  return ok({ date, inputKind: "wareki" });
+  return ok({ kind: "date", date, inputKind: "wareki" });
 }
 
-export function parseDateInput(raw: string): Result<ParsedDate> {
+function buildFromGregorianYear(year: number): Result<ParsedInput> {
+  // 年内に一部でも旧暦期間を含むなら受理しない（1872 年以前）
+  if (year < MIN_SUPPORTED_DATE.year) return err("BELOW_MIN_DATE");
+  return ok({ kind: "gregorianYear", year, inputKind: "gregorian" });
+}
+
+function buildFromEraYear(era: EraDefinition, eraYear: number): Result<ParsedInput> {
+  if (eraYear < 1) return err("UNPARSABLE");
+
+  const segment = segmentOfEraYear(era, eraYear);
+  const label = `${era.name}${eraYearLabel(eraYear)}年`;
+
+  if (!segment) {
+    const next = nextEra(era);
+    const startText = `${era.name}は${jp(era.start.year, era.start.month, era.start.day)}開始`;
+    const endText = next
+      ? `、${next.name}は${jp(next.start.year, next.start.month, next.start.day)}開始`
+      : "";
+    // もしかして提案（要件 6-9）：機械換算した西暦年の実際の元号年を示す
+    const actual = segmentsOfGregorianYear(gregorianYearOf(era, eraYear));
+    const suggestion =
+      actual.length > 0
+        ? `この年は ${actual.map((s) => `${s.era.name}${s.eraYearLabel}年`).join("・")} です。`
+        : undefined;
+    return err("ERA_OUT_OF_RANGE", `${label}は${era.name}の期間外です。${startText}${endText}です。`, suggestion);
+  }
+
+  // 旧暦由来の範囲外は、元号期間の文言より「旧暦のため非対応」を優先する
+  if (compare(segment.to, MIN_SUPPORTED_DATE) < 0) return err("BELOW_MIN_DATE");
+
+  return ok({ kind: "eraYear", era, eraYear, inputKind: "wareki" });
+}
+
+export function parseDateInput(raw: string): Result<ParsedInput> {
   const trimmed = raw.trim();
   if (trimmed === "") return err("EMPTY_INPUT");
   if (codePointLength(trimmed) > MAX_INPUT_CODE_POINTS) return err("TOO_LONG");
@@ -193,9 +250,25 @@ export function parseDateInput(raw: string): Result<ParsedDate> {
   // 日付が1件以下なのに区切りが多い場合（`メモ:日付:1989/1/8`）は別コードにする。
   if ((afterNfkc.match(/:/gu) ?? []).length > MAX_COLONS) return err("TOO_MANY_SEPARATORS");
 
-  if (YEAR_ONLY.test(normalized)) return err("YEAR_ONLY");
+  // 年だけの入力。日付形式より先に判定する（月日を欠く形は互いに衝突しない）。
+  let m = GREGORIAN_YEAR_BARE.exec(normalized) ?? GREGORIAN_YEAR_JP.exec(normalized);
+  if (m) return buildFromGregorianYear(Number(m[1]));
 
-  let m = GREGORIAN_SEPARATED.exec(normalized);
+  m = eraYearOnlyJpRegex().exec(normalized);
+  if (m) {
+    const era = findEraByName(m[1] as string);
+    if (!era) return err("UNPARSABLE");
+    return buildFromEraYear(era, eraYearToNumber(m[2] as string));
+  }
+
+  m = eraYearOnlyAbbrRegex().exec(normalized);
+  if (m) {
+    const era = findEraByAbbreviation(m[1] as string);
+    if (!era) return err("UNPARSABLE");
+    return buildFromEraYear(era, eraYearToNumber(m[2] as string));
+  }
+
+  m = GREGORIAN_SEPARATED.exec(normalized);
   if (m) return buildFromGregorian(Number(m[1]), Number(m[3]), Number(m[4]));
 
   m = GREGORIAN_JP.exec(normalized);
