@@ -216,11 +216,12 @@ function countDateLike(s) {
 }
 var GREGORIAN_YEAR_BARE = /^(\d{4})$/u;
 var GREGORIAN_YEAR_JP = /^(\d{1,4})年$/u;
+var ERA_YEAR = "(?:\u5143|\\d{1,3})";
 function eraYearOnlyJpRegex() {
-  return new RegExp(`^(${ERA_NAMES})(\u5143|\\d{1,2})\u5E74$`, "u");
+  return new RegExp(`^(${ERA_NAMES})(${ERA_YEAR})\u5E74$`, "u");
 }
 function eraYearOnlyAbbrRegex() {
-  return new RegExp(`^([${ERA_ABBRS}${ERA_ABBRS.toLowerCase()}])(\u5143|\\d{1,2})\u5E74?$`, "u");
+  return new RegExp(`^([${ERA_ABBRS}${ERA_ABBRS.toLowerCase()}])(${ERA_YEAR})\u5E74?$`, "u");
 }
 function containsEraName(s) {
   return ERAS.some((e) => s.includes(e.name));
@@ -253,10 +254,10 @@ function normalizeInput(raw) {
 var GREGORIAN_SEPARATED = /^(\d{4})([/\-.])(\d{1,2})\2(\d{1,2})$/u;
 var GREGORIAN_JP = /^(\d{4})年(\d{1,2})月(\d{1,2})日?$/u;
 function eraJpRegex() {
-  return new RegExp(`^(${ERA_NAMES})(\u5143|\\d{1,2})\u5E74(\\d{1,2})\u6708(\\d{1,2})\u65E5?$`, "u");
+  return new RegExp(`^(${ERA_NAMES})(${ERA_YEAR})\u5E74(\\d{1,2})\u6708(\\d{1,2})\u65E5?$`, "u");
 }
 function eraAbbrRegex() {
-  return new RegExp(`^([${ERA_ABBRS}${ERA_ABBRS.toLowerCase()}])(\u5143|\\d{1,2})([/\\-.])(\\d{1,2})\\3(\\d{1,2})$`, "u");
+  return new RegExp(`^([${ERA_ABBRS}${ERA_ABBRS.toLowerCase()}])(${ERA_YEAR})([/\\-.])(\\d{1,2})\\3(\\d{1,2})$`, "u");
 }
 function eraYearToNumber(token) {
   return token === "\u5143" ? 1 : Number(token);

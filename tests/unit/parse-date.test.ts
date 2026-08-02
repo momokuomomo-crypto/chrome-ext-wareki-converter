@@ -103,6 +103,15 @@ describe("年のみの入力", () => {
     // 「年」を伴えば年として扱い、範囲外として断る
     expect(code("199年")).toBe("BELOW_MIN_DATE");
   });
+
+  it("3桁の元号年も形式として受理し、実在しなければ期間外として断る", () => {
+    // 2桁までに絞ると「日付を読み取れません」に落ち、昭和65年との応答がちぐはぐになる
+    expect(code("昭和100年")).toBe("ERA_OUT_OF_RANGE");
+    expect(errOf("昭和100年").suggestion).toBe("この年は 令和7年 です。");
+    // 最新元号には終わりが無いため 3 桁でも実在する（確認期限の警告は convert 側で付く）
+    expect(okv("令和100年").kind).toBe("eraYear");
+    expect(okv("R100").kind).toBe("eraYear");
+  });
 });
 
 describe("複数日付の検知（2点検査）", () => {
@@ -157,6 +166,8 @@ describe("受理しない形式", () => {
   it("存在しない和暦に「もしかして」提案を付す（要件 6-9）", () => {
     expect(errOf("昭和64年1月8日").suggestion).toBe("この日付は 平成元年1月8日 です。");
     expect(errOf("平成31年5月1日").suggestion).toBe("この日付は 令和元年5月1日 です。");
+    // 3桁の元号年でも同じ扱いにする
+    expect(errOf("昭和100年1月1日").suggestion).toBe("この日付は 令和7年1月1日 です。");
   });
 
   it("明治5年以前", () => {

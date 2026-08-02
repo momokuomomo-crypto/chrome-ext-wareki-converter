@@ -71,11 +71,21 @@ export function countDateLike(s: string): number {
 const GREGORIAN_YEAR_BARE = /^(\d{4})$/u;
 const GREGORIAN_YEAR_JP = /^(\d{1,4})年$/u;
 
+/**
+ * 元号年は 3 桁まで受理する。
+ *
+ * 2 桁までに絞ると `昭和100年` `令和100年` が形式不一致となり「日付を読み取れません」に
+ * 落ちる。同じ種類の誤り（実在しない元号年）でありながら、`昭和65年` は期間外エラーと
+ * 「この年は 平成2年 です」の提案を返す。受理形式を広げ、実在するかどうかの判定は
+ * 一箇所（期間検証）へ集約する。
+ */
+const ERA_YEAR = "(?:元|\\d{1,3})";
+
 function eraYearOnlyJpRegex(): RegExp {
-  return new RegExp(`^(${ERA_NAMES})(元|\\d{1,2})年$`, "u");
+  return new RegExp(`^(${ERA_NAMES})(${ERA_YEAR})年$`, "u");
 }
 function eraYearOnlyAbbrRegex(): RegExp {
-  return new RegExp(`^([${ERA_ABBRS}${ERA_ABBRS.toLowerCase()}])(元|\\d{1,2})年?$`, "u");
+  return new RegExp(`^([${ERA_ABBRS}${ERA_ABBRS.toLowerCase()}])(${ERA_YEAR})年?$`, "u");
 }
 
 function containsEraName(s: string): boolean {
@@ -128,10 +138,10 @@ const GREGORIAN_SEPARATED = /^(\d{4})([/\-.])(\d{1,2})\2(\d{1,2})$/u;
 const GREGORIAN_JP = /^(\d{4})年(\d{1,2})月(\d{1,2})日?$/u;
 
 function eraJpRegex(): RegExp {
-  return new RegExp(`^(${ERA_NAMES})(元|\\d{1,2})年(\\d{1,2})月(\\d{1,2})日?$`, "u");
+  return new RegExp(`^(${ERA_NAMES})(${ERA_YEAR})年(\\d{1,2})月(\\d{1,2})日?$`, "u");
 }
 function eraAbbrRegex(): RegExp {
-  return new RegExp(`^([${ERA_ABBRS}${ERA_ABBRS.toLowerCase()}])(元|\\d{1,2})([/\\-.])(\\d{1,2})\\3(\\d{1,2})$`, "u");
+  return new RegExp(`^([${ERA_ABBRS}${ERA_ABBRS.toLowerCase()}])(${ERA_YEAR})([/\\-.])(\\d{1,2})\\3(\\d{1,2})$`, "u");
 }
 
 function eraYearToNumber(token: string): number {
