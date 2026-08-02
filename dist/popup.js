@@ -466,6 +466,15 @@ function initPopup() {
       if (lastResult) render(lastResult);
     });
   }
+  function fallbackToManualCopy() {
+    el.copyStatus.textContent = "\u81EA\u52D5\u30B3\u30D4\u30FC\u3067\u304D\u307E\u305B\u3093\u3067\u3057\u305F\u3002\u7D50\u679C\u3092\u9078\u629E\u3057\u3066\u30B3\u30D4\u30FC\u3057\u3066\u304F\u3060\u3055\u3044\u3002";
+    el.copyStatus.hidden = false;
+    const range = document.createRange();
+    range.selectNodeContents(el.result);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+  }
   el.copy.addEventListener("click", () => {
     el.copy.disabled = true;
     const result = lastResult;
@@ -473,18 +482,10 @@ function initPopup() {
       el.copy.disabled = false;
       return;
     }
-    void navigator.clipboard.writeText(formatForClipboard(result, currentDirection())).then(() => {
+    void Promise.resolve().then(() => navigator.clipboard.writeText(formatForClipboard(result, currentDirection()))).then(() => {
       el.copyStatus.textContent = "\u30B3\u30D4\u30FC\u3057\u307E\u3057\u305F\u3002";
       el.copyStatus.hidden = false;
-    }).catch(() => {
-      el.copyStatus.textContent = "\u81EA\u52D5\u30B3\u30D4\u30FC\u3067\u304D\u307E\u305B\u3093\u3067\u3057\u305F\u3002\u7D50\u679C\u3092\u9078\u629E\u3057\u3066\u30B3\u30D4\u30FC\u3057\u3066\u304F\u3060\u3055\u3044\u3002";
-      el.copyStatus.hidden = false;
-      const range = document.createRange();
-      range.selectNodeContents(el.result);
-      const selection = window.getSelection();
-      selection?.removeAllRanges();
-      selection?.addRange(range);
-    }).finally(() => {
+    }).catch(fallbackToManualCopy).finally(() => {
       el.copy.disabled = false;
     });
   });

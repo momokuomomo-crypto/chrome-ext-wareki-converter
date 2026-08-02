@@ -130,6 +130,17 @@ export function initPopup(): void {
     });
   }
 
+  /** clipboardWrite 権限を先回りで足さない。手動コピーへ誘導する。 */
+  function fallbackToManualCopy(): void {
+    el.copyStatus.textContent = "自動コピーできませんでした。結果を選択してコピーしてください。";
+    el.copyStatus.hidden = false;
+    const range = document.createRange();
+    range.selectNodeContents(el.result);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+  }
+
   el.copy.addEventListener("click", () => {
     el.copy.disabled = true;
     const result = lastResult;
@@ -137,22 +148,17 @@ export function initPopup(): void {
       el.copy.disabled = false;
       return;
     }
-    void navigator.clipboard
-      .writeText(formatForClipboard(result, currentDirection()))
+
+    // navigator.clipboard が無い環境では writeText の呼び出し自体が同期例外になる。
+    // 同期例外は連鎖の外へ抜けるため .finally() が走らず、ボタンが disabled のまま
+    // 二度と押せなくなる。呼び出しを Promise 連鎖の内側に入れて必ず終端させる。
+    void Promise.resolve()
+      .then(() => navigator.clipboard.writeText(formatForClipboard(result, currentDirection())))
       .then(() => {
         el.copyStatus.textContent = "コピーしました。";
         el.copyStatus.hidden = false;
       })
-      .catch(() => {
-        // clipboardWrite 権限を先回りで足さない。手動コピーへ誘導する。
-        el.copyStatus.textContent = "自動コピーできませんでした。結果を選択してコピーしてください。";
-        el.copyStatus.hidden = false;
-        const range = document.createRange();
-        range.selectNodeContents(el.result);
-        const selection = window.getSelection();
-        selection?.removeAllRanges();
-        selection?.addRange(range);
-      })
+      .catch(fallbackToManualCopy)
       .finally(() => {
         el.copy.disabled = false;
       });
