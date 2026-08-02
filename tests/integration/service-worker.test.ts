@@ -60,6 +60,22 @@ describe("右クリック経路", () => {
     expect(mock.notifications.created.at(-1)!.options.title).toBe("令和元年5月1日");
   });
 
+  // 単一IDの使い回しは、実機（Windows のネイティブ通知）では前回分が残っていると
+  // 新しいトーストがポップしない。エラーのあと 2 回目が無反応になる経路。
+  it("2回目以降も clear → create の順で作り直す", async () => {
+    const { handleClick } = await load();
+    await handleClick("これは日付ではありません"); // 1回目：エラー通知
+    await handleClick("1989/1/8"); // 2回目：正常な結果
+    expect(mock.notifications.calls.map((c) => c.kind)).toEqual([
+      "clear",
+      "create",
+      "clear",
+      "create",
+    ]);
+    expect(mock.notifications.live.size).toBe(1);
+    expect(mock.notifications.created.at(-1)!.options.title).toBe("平成元年1月8日");
+  });
+
   it("Service Worker 再起動後も設定を読み直す", async () => {
     mock.storage.data["settings"] = { schemaVersion: 1, direction: "toGregorian" };
     const a = await load();

@@ -55,6 +55,13 @@ function previousDay(d) {
   }
   return { year: d.year - 1, month: 12, day: 31 };
 }
+function nextDay(d) {
+  if (d.day < daysInMonth(d.year, d.month)) {
+    return { year: d.year, month: d.month, day: d.day + 1 };
+  }
+  if (d.month < 12) return { year: d.year, month: d.month + 1, day: 1 };
+  return { year: d.year + 1, month: 1, day: 1 };
+}
 
 // src/domain/era.ts
 function eraForDate(date) {
@@ -127,8 +134,6 @@ function messageFor(error) {
         return "\u65E5\u4ED8\u90E8\u5206\u3060\u3051\u3092\u5165\u529B\u307E\u305F\u306F\u9078\u629E\u3057\u3066\u304F\u3060\u3055\u3044\u3002";
       case "UNPARSABLE":
         return "\u65E5\u4ED8\u3092\u8AAD\u307F\u53D6\u308C\u307E\u305B\u3093\u3002\u4F8B\uFF1A1989/1/8\u3001\u5E73\u6210\u5143\u5E741\u67088\u65E5\u3001H1.1.8";
-      case "YEAR_ONLY":
-        return "\u6539\u5143\u5E74\u306F\u5143\u53F7\u3092\u4E00\u610F\u306B\u6C7A\u3081\u3089\u308C\u306A\u3044\u305F\u3081\u3001\u6708\u65E5\u307E\u3067\u5165\u529B\u3057\u3066\u304F\u3060\u3055\u3044\u3002";
       case "NONEXISTENT_DATE":
         return error.detail ? `${error.detail}\u306F\u5B58\u5728\u3057\u307E\u305B\u3093\u3002` : "\u5B58\u5728\u3057\u306A\u3044\u65E5\u4ED8\u3067\u3059\u3002";
       case "MULTIPLE_DATES":
@@ -156,6 +161,41 @@ function err(code, detail, suggestion) {
   return { ok: false, error: e };
 }
 
+// src/domain/year-span.ts
+function makeSegment(era, from, to) {
+  const eraYear = eraYearOf(era, from);
+  return { era, eraYear, eraYearLabel: eraYearLabel(eraYear), from, to };
+}
+function coversFullYear(from, to) {
+  return from.month === 1 && from.day === 1 && to.month === 12 && to.day === 31;
+}
+function segmentsOfGregorianYear(year) {
+  const yearEnd = { year, month: 12, day: 31 };
+  const segments = [];
+  let cursor = { year, month: 1, day: 1 };
+  while (compare(cursor, yearEnd) <= 0) {
+    const era = eraForDate(cursor);
+    if (!era) return [];
+    const next = nextEra(era);
+    const to = next && compare(next.start, yearEnd) <= 0 ? previousDay(next.start) : yearEnd;
+    segments.push(makeSegment(era, cursor, to));
+    cursor = nextDay(to);
+  }
+  return segments;
+}
+function segmentOfEraYear(era, eraYear) {
+  if (!Number.isInteger(eraYear) || eraYear < 1) return null;
+  const year = gregorianYearOf(era, eraYear);
+  const yearStart = { year, month: 1, day: 1 };
+  const yearEnd = { year, month: 12, day: 31 };
+  const from = compare(era.start, yearStart) > 0 ? era.start : yearStart;
+  const next = nextEra(era);
+  const eraEnd = next ? previousDay(next.start) : null;
+  const to = eraEnd && compare(eraEnd, yearEnd) < 0 ? eraEnd : yearEnd;
+  if (compare(from, to) > 0) return null;
+  return makeSegment(era, from, to);
+}
+
 // src/domain/parse-date.ts
 var MAX_INPUT_CODE_POINTS = 64;
 var MAX_LABEL_LENGTH = 12;
@@ -174,7 +214,14 @@ function dateLikeRegex() {
 function countDateLike(s) {
   return (s.match(dateLikeRegex()) ?? []).length;
 }
-var YEAR_ONLY = new RegExp(`^(?:(?:${ERA_NAMES}|[${ERA_ABBRS}])?(?:\u5143|\\d{1,4}))\u5E74?$`, "u");
+var GREGORIAN_YEAR_BARE = /^(\d{4})$/u;
+var GREGORIAN_YEAR_JP = /^(\d{1,4})年$/u;
+function eraYearOnlyJpRegex() {
+  return new RegExp(`^(${ERA_NAMES})(\u5143|\\d{1,2})\u5E74$`, "u");
+}
+function eraYearOnlyAbbrRegex() {
+  return new RegExp(`^([${ERA_ABBRS}${ERA_ABBRS.toLowerCase()}])(\u5143|\\d{1,2})\u5E74?$`, "u");
+}
 function containsEraName(s) {
   return ERAS.some((e) => s.includes(e.name));
 }
@@ -222,7 +269,7 @@ function buildFromGregorian(year, month, day) {
   const date = makePlainDate(year, month, day);
   if (!date) return err("NONEXISTENT_DATE", jp(year, month, day));
   if (compare(date, MIN_SUPPORTED_DATE) < 0) return err("BELOW_MIN_DATE");
-  return ok({ date, inputKind: "gregorian" });
+  return ok({ kind: "date", date, inputKind: "gregorian" });
 }
 function buildFromEra(era, eraYear, month, day) {
   if (eraYear < 1) return err("UNPARSABLE");
@@ -240,7 +287,26 @@ function buildFromEra(era, eraYear, month, day) {
     const suggestion = actualEra ? `\u3053\u306E\u65E5\u4ED8\u306F ${actualEra.name}${eraYearLabel(date.year - actualEra.start.year + 1)}\u5E74${date.month}\u6708${date.day}\u65E5 \u3067\u3059\u3002` : void 0;
     return err("ERA_OUT_OF_RANGE", `${label}\u306F${era.name}\u306E\u671F\u9593\u5916\u3067\u3059\u3002${startText}${endText}\u3067\u3059\u3002`, suggestion);
   }
-  return ok({ date, inputKind: "wareki" });
+  return ok({ kind: "date", date, inputKind: "wareki" });
+}
+function buildFromGregorianYear(year) {
+  if (year < MIN_SUPPORTED_DATE.year) return err("BELOW_MIN_DATE");
+  return ok({ kind: "gregorianYear", year, inputKind: "gregorian" });
+}
+function buildFromEraYear(era, eraYear) {
+  if (eraYear < 1) return err("UNPARSABLE");
+  const segment = segmentOfEraYear(era, eraYear);
+  const label = `${era.name}${eraYearLabel(eraYear)}\u5E74`;
+  if (!segment) {
+    const next = nextEra(era);
+    const startText = `${era.name}\u306F${jp(era.start.year, era.start.month, era.start.day)}\u958B\u59CB`;
+    const endText = next ? `\u3001${next.name}\u306F${jp(next.start.year, next.start.month, next.start.day)}\u958B\u59CB` : "";
+    const actual = segmentsOfGregorianYear(gregorianYearOf(era, eraYear));
+    const suggestion = actual.length > 0 ? `\u3053\u306E\u5E74\u306F ${actual.map((s) => `${s.era.name}${s.eraYearLabel}\u5E74`).join("\u30FB")} \u3067\u3059\u3002` : void 0;
+    return err("ERA_OUT_OF_RANGE", `${label}\u306F${era.name}\u306E\u671F\u9593\u5916\u3067\u3059\u3002${startText}${endText}\u3067\u3059\u3002`, suggestion);
+  }
+  if (compare(segment.to, MIN_SUPPORTED_DATE) < 0) return err("BELOW_MIN_DATE");
+  return ok({ kind: "eraYear", era, eraYear, inputKind: "wareki" });
 }
 function parseDateInput(raw) {
   const trimmed = raw.trim();
@@ -252,8 +318,21 @@ function parseDateInput(raw) {
   const after = countDateLike(normalized);
   if (Math.max(before, after) >= 2) return err("MULTIPLE_DATES");
   if ((afterNfkc.match(/:/gu) ?? []).length > MAX_COLONS) return err("TOO_MANY_SEPARATORS");
-  if (YEAR_ONLY.test(normalized)) return err("YEAR_ONLY");
-  let m = GREGORIAN_SEPARATED.exec(normalized);
+  let m = GREGORIAN_YEAR_BARE.exec(normalized) ?? GREGORIAN_YEAR_JP.exec(normalized);
+  if (m) return buildFromGregorianYear(Number(m[1]));
+  m = eraYearOnlyJpRegex().exec(normalized);
+  if (m) {
+    const era = findEraByName(m[1]);
+    if (!era) return err("UNPARSABLE");
+    return buildFromEraYear(era, eraYearToNumber(m[2]));
+  }
+  m = eraYearOnlyAbbrRegex().exec(normalized);
+  if (m) {
+    const era = findEraByAbbreviation(m[1]);
+    if (!era) return err("UNPARSABLE");
+    return buildFromEraYear(era, eraYearToNumber(m[2]));
+  }
+  m = GREGORIAN_SEPARATED.exec(normalized);
   if (m) return buildFromGregorian(Number(m[1]), Number(m[3]), Number(m[4]));
   m = GREGORIAN_JP.exec(normalized);
   if (m) return buildFromGregorian(Number(m[1]), Number(m[2]), Number(m[3]));
@@ -276,16 +355,33 @@ function parseDateInput(raw) {
 function convert(raw) {
   const parsed = parseDateInput(raw);
   if (!parsed.ok) return parsed;
-  const { date, inputKind } = parsed.value;
-  const wareki = formatWareki(date);
-  if (!wareki) return err("BELOW_MIN_DATE");
+  const input = parsed.value;
+  if (input.kind === "date") {
+    const wareki = formatWareki(input.date);
+    if (!wareki) return err("BELOW_MIN_DATE");
+    return ok({
+      kind: "date",
+      gregorian: input.date,
+      wareki,
+      inputKind: input.inputKind,
+      transitions: transitionsInYear(input.date.year),
+      // 確認期限は双方向に適用する。最新元号には次が無いため isWithinEra では検出できない。
+      beyondVerified: compare(input.date, verifiedThrough()) > 0
+    });
+  }
+  const segments = input.kind === "gregorianYear" ? segmentsOfGregorianYear(input.year) : [segmentOfEraYear(input.era, input.eraYear)].filter((s) => s !== null);
+  const first = segments[0];
+  const last = segments[segments.length - 1];
+  if (!first || !last) return err("BELOW_MIN_DATE");
   return ok({
-    gregorian: date,
-    wareki,
-    inputKind,
-    transitions: transitionsInYear(date.year),
-    // 確認期限は双方向に適用する。最新元号には次が無いため isWithinEra では検出できない。
-    beyondVerified: compare(date, verifiedThrough()) > 0
+    kind: "year",
+    gregorianYear: first.from.year,
+    segments,
+    from: first.from,
+    to: last.to,
+    inputKind: input.inputKind,
+    transitions: transitionsInYear(first.from.year),
+    beyondVerified: compare(last.to, verifiedThrough()) > 0
   });
 }
 
@@ -314,6 +410,9 @@ async function loadSettings() {
 function formatDateJp(d) {
   return `${d.year}\u5E74${d.month}\u6708${d.day}\u65E5`;
 }
+function monthDayJp(d) {
+  return `${d.month}\u6708${d.day}\u65E5`;
+}
 function transitionNotes(r) {
   return r.transitions.map(
     (t) => `${t.year}\u5E74\u306F${t.previousEraLastDay.month}\u6708${t.previousEraLastDay.day}\u65E5\u307E\u3067\u304C${t.previousEra.name}${t.previousEraYearLabel}\u5E74\u3001${t.nextEra.start.month}\u6708${t.nextEra.start.day}\u65E5\u304B\u3089\u304C${t.nextEra.name}\u5143\u5E74`
@@ -324,19 +423,34 @@ function verificationNote(r) {
   const v = verifiedThrough();
   return `\u3053\u306E\u65E5\u4ED8\u306F\u540C\u68B1\u306E\u5143\u53F7\u30C7\u30FC\u30BF\u78BA\u8A8D\u671F\u9650\uFF08${formatDateJp(v)}\uFF09\u3088\u308A\u5F8C\u3067\u3059\u3002\u4EE5\u964D\u306B\u6539\u5143\u304C\u3042\u3063\u305F\u5834\u5408\u3001\u6B63\u3057\u3044\u548C\u66A6\u306F\u7570\u306A\u308A\u307E\u3059\u3002`;
 }
+function warekiLines(r) {
+  if (r.kind === "date") return [r.wareki];
+  const showSpan = r.segments.length > 1;
+  return r.segments.map((s) => {
+    const base = `${s.era.name}${s.eraYearLabel}\u5E74`;
+    return showSpan ? `${base}\uFF08${monthDayJp(s.from)}\u301C${monthDayJp(s.to)}\uFF09` : base;
+  });
+}
+function gregorianLines(r) {
+  if (r.kind === "date") return [formatDateJp(r.gregorian)];
+  if (coversFullYear(r.from, r.to)) return [`${r.gregorianYear}\u5E74`];
+  return [`${r.gregorianYear}\u5E74${monthDayJp(r.from)}\u301C${monthDayJp(r.to)}`];
+}
 function formatForPopup(r, direction) {
-  const wareki = r.wareki;
-  const gregorian = formatDateJp(r.gregorian);
-  const primary = direction === "toWareki" ? wareki : gregorian;
-  const secondary = direction === "toWareki" ? gregorian : wareki;
+  const wareki = warekiLines(r);
+  const gregorian = gregorianLines(r);
   const notes = [...transitionNotes(r)];
   const v = verificationNote(r);
   if (v) notes.push(v);
-  return { primary, secondary, notes };
+  return {
+    primaryLines: direction === "toWareki" ? wareki : gregorian,
+    secondaryLines: direction === "toWareki" ? gregorian : wareki,
+    notes
+  };
 }
 function formatForNotification(r, direction) {
-  const { primary, secondary } = formatForPopup(r, direction);
-  return { title: primary, message: secondary };
+  const { primaryLines, secondaryLines } = formatForPopup(r, direction);
+  return { title: primaryLines.join("\uFF0F"), message: secondaryLines.join("\uFF0F") };
 }
 
 // src/background/context-menu.ts
@@ -382,6 +496,14 @@ async function showBadgeFallback() {
     title: "\u901A\u77E5\u304C\u7121\u52B9\u3067\u3059\u3002\u3053\u3053\u3092\u958B\u304F\u3068\u5909\u63DB\u7D50\u679C\u3092\u78BA\u8A8D\u3067\u304D\u307E\u3059"
   });
 }
+async function clearPreviousNotification() {
+  await new Promise((resolve) => {
+    chrome.notifications.clear(NOTIFICATION_ID, () => {
+      void chrome.runtime.lastError;
+      resolve();
+    });
+  });
+}
 async function showResult(result) {
   const level = await getPermissionLevel();
   if (level === "denied") {
@@ -390,6 +512,7 @@ async function showResult(result) {
     return;
   }
   await clearBadge();
+  await clearPreviousNotification();
   await new Promise((resolve) => {
     chrome.notifications.create(
       NOTIFICATION_ID,

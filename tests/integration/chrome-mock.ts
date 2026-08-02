@@ -15,6 +15,10 @@ export type ChromeMock = {
     created: CreatedNotification[];
     permissionLevel: NotificationPermissionLevel;
     createShouldFail: boolean;
+    /** clear と create の呼び出し順を検証するための記録 */
+    calls: Array<{ kind: "clear" | "create"; id: string }>;
+    /** いま表示されている通知。created（累積の記録）とは別に持つ */
+    live: Set<string>;
   };
   contextMenus: { created: chrome.contextMenus.CreateProperties[]; removeAllCalls: number };
   action: { badgeText: string; title: string };
@@ -30,7 +34,13 @@ export function installChromeMock(): ChromeMock {
   const state: ChromeMock = {
     storage: { data: {} },
     session: { data: {} },
-    notifications: { created: [], permissionLevel: "granted", createShouldFail: false },
+    notifications: {
+      created: [],
+      permissionLevel: "granted",
+      createShouldFail: false,
+      calls: [],
+      live: new Set(),
+    },
     contextMenus: { created: [], removeAllCalls: 0 },
     action: { badgeText: "", title: "" },
     listeners: { onInstalled: [], onStartup: [], onClicked: [] },
@@ -98,13 +108,22 @@ export function installChromeMock(): ChromeMock {
       getPermissionLevel: (cb: (level: NotificationPermissionLevel) => void) => {
         cb(state.notifications.permissionLevel);
       },
+      // created は累積の記録なので clear では削らない。表示中かどうかは live で持つ。
+      clear: (id: string, cb?: (wasCleared: boolean) => void) => {
+        state.notifications.calls.push({ kind: "clear", id });
+        const wasLive = state.notifications.live.delete(id);
+        // 実機のコールバックは非同期
+        queueMicrotask(() => cb?.(wasLive));
+      },
       create: (
         id: string,
         options: chrome.notifications.NotificationOptions<true>,
         cb?: (id: string) => void,
       ) => {
         // 実機と同様に、抑制されていても create 自体は成功する
+        state.notifications.calls.push({ kind: "create", id });
         state.notifications.created.push({ id, options });
+        state.notifications.live.add(id);
         cb?.(id);
       },
     },
