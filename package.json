@@ -1,6 +1,6 @@
 {
   "name": "chrome-ext-wareki-converter",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "description": "西暦と和暦を日付単位で相互変換するChrome拡張機能",

@@ -57,5 +57,7 @@ npm run verify  # ビルド → dist の検査
 
 - [要件定義](docs/要件定義.md)
 - [設計](docs/設計.md)
+- [プライバシーポリシー](PRIVACY.md)
+- [ストア掲載情報](docs/ストア掲載情報.md)
 
 設計から実装まで [ai-build-council](https://github.com/momokuomomo-crypto/ai-build-council) のゲート付きワークフローで進めました。ドメイン層は姉妹拡張 [chrome-ext-japanese-age-calculator](https://github.com/momokuomomo-crypto/chrome-ext-japanese-age-calculator) の検証済みコードを移植し、設計査読で指摘された差分（未来上限の一本化、候補数の2点検査、元号名の動的生成）を加えています。各段階の生ログは `.ai-build-council/runs/` にあります。
