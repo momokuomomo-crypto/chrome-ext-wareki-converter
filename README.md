@@ -49,7 +49,7 @@ git clone https://github.com/momokuomomo-crypto/chrome-ext-wareki-converter.git
 
 ```
 npm install
-npm test        # 単体・統合テスト（99件）
+npm test        # 単体・統合テスト（152件）
 npm run verify  # ビルド → dist の検査
 ```
 
