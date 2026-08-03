@@ -99,6 +99,22 @@ describe("年のみの変換", () => {
     expect(f.secondaryLines).toEqual(["1989年1月8日〜12月31日"]);
   });
 
+  // TESTING.md「2-3. 年だけの入力」の表をそのまま固定する。
+  // 手順書だけが実装から取り残されると、実機テストで正しい挙動を不具合として報告させることになる。
+  it.each([
+    ["1901", ["明治34年"], ["1901年"]],
+    ["1989", ["昭和64年（1月1日〜1月7日）", "平成元年（1月8日〜12月31日）"], ["1989年"]],
+    ["1989年", ["昭和64年（1月1日〜1月7日）", "平成元年（1月8日〜12月31日）"], ["1989年"]],
+    ["昭和64年", ["昭和64年"], ["1989年1月1日〜1月7日"]],
+    ["平成元年", ["平成元年"], ["1989年1月8日〜12月31日"]],
+    ["令和元年", ["令和元年"], ["2019年5月1日〜12月31日"]],
+    ["平成31年", ["平成31年"], ["2019年1月1日〜4月30日"]],
+  ])("手順書 2-3 の表：%s", (input, primary, secondary) => {
+    const f = formatForPopup(yearResult(input), "toWareki");
+    expect(f.primaryLines).toEqual(primary);
+    expect(f.secondaryLines).toEqual(secondary);
+  });
+
   it("確認期限は年の終端で判定する", () => {
     const v = verifiedThrough();
     expect(yearResult(`${v.year}`).beyondVerified).toBe(false);
